@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from datetime import date
+import pandas as pd
 from sklearn.metrics import mean_squared_error
 from model import model_train, model_load, model_predict
 from cslib import fetch_ts, engineer_features
@@ -21,7 +22,7 @@ def main():
     #models = model_load()
 
     ## train the model
-    country = "all"
+    df_results = pd.DataFrame(columns=['country','date','target','predicted'])
 
     for country in prod_data_eng:
         print("--------------- Country %s ---------------"% country)
@@ -44,11 +45,21 @@ def main():
             month = dates[i][5:7]
             day = dates[i][8:10]
             res = model_predict(country,year,month,day, all_models=models, all_data=prod_data_eng)
-            print("Date: %s Result: %s  Expected: %s"%(dates[i], res, Y[i]))
             pred_y.append(res['y_pred'][0])
 
         eval_rmse =  round(np.sqrt(mean_squared_error(Y,pred_y)))
+
         print("--------------- RMSE %s ---------------"% eval_rmse)
+
+        df = pd.DataFrame(columns=['country','date','target','predicted'])
+        df.country = [country] * len(Y)
+        df.date = dates
+        df.target = Y
+        df.predicted = pred_y
+        df_results = df_results.append(df)
+
+    print("Writing results to production_analysis.csv")
+    df_results.to_csv("production_analysis.csv")
 
 if __name__ == "__main__":
 

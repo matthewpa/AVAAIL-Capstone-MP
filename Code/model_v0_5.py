@@ -22,7 +22,8 @@ from cslib import fetch_ts, engineer_features
 ## model specific variables (iterate the version and note with each change)
 MODEL_DIR = "models"
 MODEL_VERSION = 0.6
-MODEL_VERSION_NOTE = "back to random forest"
+MODEL_VERSION_NOTE = "Back to Random Forest"
+
 
 def build_and_compile_model(norm):
     model = keras.Sequential([
@@ -39,6 +40,19 @@ def build_and_compile_model(norm):
 # Ensure model directory exists
 if not os.path.exists(os.path.join(".", "models")):
     os.mkdir("models")
+
+def get_rf_grid():
+    ## train a random forest model
+    param_grid_rf = {
+    'rf__criterion': ['mse','mae'],
+    'rf__n_estimators': [10,15,20,25]
+    }
+
+    pipe_rf = Pipeline(steps=[('scaler', StandardScaler()),
+                              ('rf', RandomForestRegressor())])
+
+    grid = GridSearchCV(pipe_rf, param_grid=param_grid_rf, cv=5, iid=False, n_jobs=-1)
+    return grid
 
 def _model_train(df,tag,test=False):
     """
@@ -68,43 +82,37 @@ def _model_train(df,tag,test=False):
     ## Perform a train-test split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25,
                                                         shuffle=True, random_state=42)
-    ## train a random forest model
-    param_grid_rf = {
-    'rf__criterion': ['mse','mae'],
-    'rf__n_estimators': [10,15,20,25]
-    }
 
-    pipe_rf = Pipeline(steps=[('scaler', StandardScaler()),
-                              ('rf', RandomForestRegressor())])
+    model = get_rf_grid()
 
-    grid = GridSearchCV(pipe_rf, param_grid=param_grid_rf, cv=5, iid=False, n_jobs=-1)
-    grid.fit(X_train, y_train)
-    y_pred = grid.predict(X_test)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
     eval_rmse =  round(np.sqrt(mean_squared_error(y_test,y_pred)))
 
     ## retrain using all data
-    grid.fit(X, y)
+    model.fit(X, y)
     model_name = re.sub("\.","_",str(MODEL_VERSION))
     if test:
         saved_model = os.path.join(MODEL_DIR,
-                                   "test-{}-{}.joblib".format(tag,model_name))
+                                   "test-{}-{}.h5".format(tag,model_name))
         print("... saving test version of model: {}".format(saved_model))
     else:
         saved_model = os.path.join(MODEL_DIR,
-                                   "sl-{}-{}.joblib".format(tag,model_name))
+                                   "sl-{}-{}..h5".format(tag,model_name))
         print("... saving model: {}".format(saved_model))
 
-    joblib.dump(grid,saved_model)
+    model.save(saved_model)
 
     m, s = divmod(time.time()-time_start, 60)
     h, m = divmod(m, 60)
     runtime = "%03d:%02d:%02d"%(h, m, s)
 
     ## update log
-    update_train_log(tag,(str(dates[0]),str(dates[-1])),{'rmse':eval_rmse}, grid.best_params_, runtime,
+    update_train_log(tag,(str(dates[0]),str(dates[-1])),{'rmse':eval_rmse},{}, runtime,
                      MODEL_VERSION, MODEL_VERSION_NOTE,test=True)
 
-    return eval_rmse, grid.best_params_
+    return eval_rmse, {}
+
 
 def model_train_dataframe(tag, df, test=False):
     return _model_train(df, tag, test)
